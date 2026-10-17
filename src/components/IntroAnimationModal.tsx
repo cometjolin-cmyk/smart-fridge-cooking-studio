@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Maximize2,
   Minimize2,
-  Sparkles,
   ChevronRight,
   Film
 } from "lucide-react";
@@ -37,6 +36,7 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -52,11 +52,15 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
   useEffect(() => {
     let objectUrl: string | null = null;
     (async () => {
-      const blob = await getCustomVideoBlob();
-      if (blob) {
-        objectUrl = URL.createObjectURL(blob);
-        setVideoSrc(objectUrl);
-        setIsCustomUserVideo(true);
+      try {
+        const blob = await getCustomVideoBlob();
+        if (blob) {
+          objectUrl = URL.createObjectURL(blob);
+          setVideoSrc(objectUrl);
+          setIsCustomUserVideo(true);
+        }
+      } catch (e) {
+        console.warn("Failed to load custom video blob from IndexedDB:", e);
       }
     })();
 
@@ -67,34 +71,38 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
     };
   }, []);
 
-  // Handle video autoplay whenever opened
+  // Handle video autoplay whenever opened or source changes
   useEffect(() => {
     if (isOpen) {
       setIsWhiteBloom(false);
       setCurrentTime(0);
-      setIsPlaying(true);
+      setHasError(false);
       setControlsVisible(true);
 
-      const timer = setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.currentTime = 0;
-          videoRef.current
-            .play()
+      const v = videoRef.current;
+      if (v) {
+        // Enforce muted and playsInline for strict mobile browser autoplay policies
+        v.muted = isMuted;
+        v.defaultMuted = true;
+        v.playsInline = true;
+        const playPromise = v.play();
+        if (playPromise !== undefined) {
+          playPromise
             .then(() => setIsPlaying(true))
             .catch(() => {
-              // Browser policy fallback: muted autoplay is always allowed
+              // Browser policy fallback: force mute
+              v.muted = true;
               setIsMuted(true);
-              if (videoRef.current) {
-                videoRef.current.muted = true;
-                videoRef.current.play().catch(console.error);
-              }
+              v.play()
+                .then(() => setIsPlaying(true))
+                .catch(() => {
+                  setIsPlaying(false);
+                });
             });
         }
-      }, 80);
+      }
 
       resetHideTimer();
-
-      return () => clearTimeout(timer);
     }
   }, [isOpen, videoSrc]);
 
@@ -118,7 +126,7 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
     if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
     hideControlsTimer.current = setTimeout(() => {
       setControlsVisible(false);
-    }, 3200);
+    }, 3500);
   };
 
   const handleMouseMove = () => {
@@ -153,16 +161,25 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
-      setIsPlaying(true);
+      videoRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            setIsMuted(true);
+            videoRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+          }
+        });
     }
     resetHideTimer();
   };
 
   const handleToggleMute = () => {
     if (!videoRef.current) return;
-    videoRef.current.muted = !isMuted;
-    setIsMuted(!isMuted);
+    const nextMuted = !isMuted;
+    videoRef.current.muted = nextMuted;
+    setIsMuted(nextMuted);
     resetHideTimer();
   };
 
@@ -170,8 +187,7 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
     if (!videoRef.current) return;
     setIsWhiteBloom(false);
     videoRef.current.currentTime = 0;
-    videoRef.current.play();
-    setIsPlaying(true);
+    videoRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
     resetHideTimer();
   };
 
@@ -187,26 +203,28 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
     localStorage.setItem("smart_kitchen_autoplay_intro", checked ? "true" : "false");
   };
 
-  // Process user's MP4 file (dragged or picked)
+  // Process user's MP4 file (picked from device or dragged)
   const processUserMp4File = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".mp4") && !file.type.includes("video")) {
-      alert("請選擇 MP4 格式的影片檔案！");
+      setStatusMessage("請選擇 MP4 格式影片檔案！");
+      setTimeout(() => setStatusMessage(null), 3000);
       return;
     }
 
     setIsUploading(true);
-    setStatusMessage("正在載入並套用您的原始 MP4 影片...");
+    setStatusMessage("正在載入並套用您的影片...");
 
     try {
       // 1. Immediately create local Object URL for instant 0-latency playback
       const localUrl = URL.createObjectURL(file);
       setVideoSrc(localUrl);
       setIsCustomUserVideo(true);
+      setHasError(false);
 
       // 2. Persist in IndexedDB for permanent local storage across reloads
       await saveCustomVideoBlob(file);
 
-      // 3. Upload to server `/public/intro.mp4` so it's also saved on the backend and in code export ZIPs
+      // 3. Upload to server `/public/intro.mp4` asynchronously
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -216,7 +234,7 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ videoBase64: base64, filename: file.name }),
           });
-          setStatusMessage(`✅ 已成功套用您的影片「${file.name}」為滿屏影片！`);
+          setStatusMessage(`✅ 已成功套用「${file.name}」為滿屏影片！`);
           setTimeout(() => setStatusMessage(null), 3000);
         } catch (err) {
           console.warn("Server upload fallback warning:", err);
@@ -228,12 +246,12 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.currentTime = 0;
-          videoRef.current.play().catch(console.error);
-          setIsPlaying(true);
+          videoRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
         }
       }, 100);
     } catch (err: any) {
-      alert("套用影片失敗: " + err.message);
+      setStatusMessage("套用影片失敗: " + (err.message || "未知錯誤"));
+      setTimeout(() => setStatusMessage(null), 3000);
     } finally {
       setIsUploading(false);
     }
@@ -269,7 +287,8 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
     await clearCustomVideoBlob();
     setVideoSrc(`/intro.mp4?t=${Date.now()}`);
     setIsCustomUserVideo(false);
-    setStatusMessage("已恢復為預設手繪動畫影片");
+    setHasError(false);
+    setStatusMessage("已恢復為預設動畫影片");
     setTimeout(() => setStatusMessage(null), 2500);
     handleReplay();
   };
@@ -279,6 +298,7 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
   return (
     <div
       onMouseMove={handleMouseMove}
+      onTouchStart={resetHideTimer}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -297,8 +317,32 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
       <video
         ref={videoRef}
         src={videoSrc}
+        autoPlay
         playsInline
         muted={isMuted}
+        preload="auto"
+        onLoadedMetadata={() => {
+          if (videoRef.current) {
+            setDuration(videoRef.current.duration || 6.5);
+          }
+        }}
+        onCanPlay={() => {
+          if (videoRef.current && isPlaying) {
+            videoRef.current.muted = isMuted;
+            videoRef.current.play().catch(() => {
+              if (videoRef.current) {
+                videoRef.current.muted = true;
+                setIsMuted(true);
+                videoRef.current.play().catch(() => setIsPlaying(false));
+              }
+            });
+          }
+        }}
+        onError={() => {
+          console.warn("Video failed to play / load");
+          setHasError(true);
+          setStatusMessage("影片載入中或無法播放，點擊右上方「進入系統」直接開始料理！");
+        }}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleVideoEnded}
         onClick={handleTogglePlay}
@@ -310,10 +354,10 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
       {/* Drag & Drop Visual Overlay */}
       {isDraggingOver && (
         <div className="absolute inset-0 bg-blue-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-white border-4 border-dashed border-blue-400 z-50 pointer-events-none animate-in fade-in duration-150">
-          <Film className="w-20 h-20 text-blue-300 animate-bounce mb-3" />
-          <h2 className="text-2xl font-black tracking-tight">放開以直接套用您的 MP4 影片</h2>
-          <p className="text-sm text-blue-200 mt-1">
-            系統將立即滿屏播放您的影片，並永久儲存於此網頁中！
+          <Film className="w-16 h-16 text-blue-300 animate-bounce mb-3" />
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight">放開以套用您的 MP4 影片</h2>
+          <p className="text-xs sm:text-sm text-blue-200 mt-1">
+            將立即滿屏播放您的影片！
           </p>
         </div>
       )}
@@ -329,44 +373,81 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
       {!isPlaying && (
         <button
           onClick={handleTogglePlay}
-          className="absolute inset-0 m-auto w-20 h-20 rounded-full bg-white/80 hover:bg-white text-slate-900 border-2 border-slate-850 flex items-center justify-center shadow-2xl hover:scale-105 transition-all cursor-pointer z-30"
+          className="absolute inset-0 m-auto w-24 h-24 rounded-full bg-white/90 hover:bg-white text-slate-900 border-2 border-slate-850 flex flex-col items-center justify-center shadow-2xl hover:scale-105 transition-all cursor-pointer z-30"
           title="播放"
         >
-          <Play className="w-10 h-10 ml-1 text-slate-900" />
+          <Play className="w-9 h-9 ml-1 text-slate-900" />
+          <span className="text-[10px] font-black text-slate-800 mt-0.5">點擊播放</span>
         </button>
       )}
 
-      {/* Status banner notification if message present */}
-      {statusMessage && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-slate-900/90 text-white px-4 py-2 rounded-2xl border border-slate-700 shadow-2xl text-xs font-bold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-top duration-200">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{statusMessage}</span>
+      {/* Error or Status banner notification */}
+      {(statusMessage || hasError) && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white px-4 py-2.5 rounded-2xl border border-slate-700 shadow-2xl text-xs font-bold flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-top duration-200 max-w-[90vw]">
+          {hasError ? (
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          )}
+          <span className="truncate">{statusMessage || "影片需要點擊播放或進入系統"}</span>
+          <button
+            onClick={handleSkip}
+            className="px-2.5 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black shrink-0 whitespace-nowrap text-[11px]"
+          >
+            直接進入
+          </button>
         </div>
       )}
 
       {/* TOP FLOATING CINEMATIC BAR */}
       <div
-        className={`absolute top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between gap-3 z-30 transition-opacity duration-300 pointer-events-auto ${
+        className={`absolute top-0 left-0 right-0 p-3 sm:p-5 flex items-center justify-between gap-2 sm:gap-3 z-30 transition-opacity duration-300 pointer-events-auto ${
           controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
-        {/* Minimal Floating Top Right Controls */}
-        <div className="flex items-center gap-2 ml-auto">
+        {/* Top Left: Pick user video button */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl bg-black/60 hover:bg-black/80 text-white text-xs font-bold border border-white/20 backdrop-blur-md flex items-center gap-1.5 shadow-xl transition-all cursor-pointer whitespace-nowrap"
+            title="選擇手機或電腦中的 MP4 影片"
+          >
+            <Upload className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="text-[11px] sm:text-xs">
+              {isUploading ? "載入中..." : "選擇影片"}
+            </span>
+          </button>
+
+          {isCustomUserVideo && (
+            <button
+              onClick={handleResetToDefault}
+              className="px-2 sm:px-2.5 py-1.5 sm:py-2 rounded-2xl bg-black/60 hover:bg-black/80 text-slate-300 hover:text-white text-[11px] sm:text-xs border border-white/20 backdrop-blur-md flex items-center gap-1 shadow-xl transition-all cursor-pointer whitespace-nowrap"
+              title="恢復預設動畫"
+            >
+              <RotateCcw className="w-3 h-3 text-slate-400" />
+              <span className="hidden sm:inline">恢復預設</span>
+            </button>
+          )}
+        </div>
+
+        {/* Top Right Controls */}
+        <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
           {/* Sound Toggle */}
           <button
             onClick={handleToggleMute}
-            className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl bg-black/60 hover:bg-black/80 text-white text-xs font-bold border border-white/15 backdrop-blur-md flex items-center gap-1.5 shadow-xl transition-all cursor-pointer whitespace-nowrap"
+            className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-2xl bg-black/60 hover:bg-black/80 text-white text-xs font-bold border border-white/20 backdrop-blur-md flex items-center gap-1.5 shadow-xl transition-all cursor-pointer whitespace-nowrap"
             title={isMuted ? "點擊開啟聲音" : "靜音"}
           >
             {isMuted ? (
               <>
-                <VolumeX className="w-4 h-4 text-slate-400" />
-                <span className="hidden xs:inline">靜音</span>
+                <VolumeX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="text-[11px] sm:text-xs">靜音</span>
               </>
             ) : (
               <>
-                <Volume2 className="w-4 h-4 text-emerald-400" />
-                <span className="hidden xs:inline">開聲</span>
+                <Volume2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="text-[11px] sm:text-xs">開聲</span>
               </>
             )}
           </button>
@@ -374,27 +455,27 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
           {/* Fit Mode Toggle (Cover / Contain) */}
           <button
             onClick={() => setFitMode(fitMode === "cover" ? "contain" : "cover")}
-            className="p-1.5 sm:p-2 rounded-2xl bg-black/60 hover:bg-black/80 text-white text-xs border border-white/15 backdrop-blur-md shadow-xl transition-all cursor-pointer shrink-0"
+            className="p-1.5 sm:p-2 rounded-2xl bg-black/60 hover:bg-black/80 text-white text-xs border border-white/20 backdrop-blur-md shadow-xl transition-all cursor-pointer shrink-0"
             title={fitMode === "cover" ? "切換為等比例黑邊" : "切換為滿版填滿"}
           >
-            {fitMode === "cover" ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {fitMode === "cover" ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
 
           {/* Skip CTA Button */}
           <button
             onClick={handleSkip}
-            className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl bg-white hover:bg-amber-100 text-slate-900 text-xs sm:text-sm font-black border-2 border-slate-900 shadow-xl flex items-center gap-1 hover:scale-105 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
+            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl bg-white hover:bg-amber-100 text-slate-900 text-xs sm:text-sm font-black border-2 border-slate-900 shadow-xl flex items-center gap-1 hover:scale-105 active:scale-95 transition-all cursor-pointer whitespace-nowrap shrink-0"
             title="進入料理系統 (Esc)"
           >
             <span>進入系統</span>
-            <ChevronRight className="w-4 h-4 text-slate-900" />
+            <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-900" />
           </button>
         </div>
       </div>
 
       {/* BOTTOM FLOATING CINEMATIC BAR */}
       <div
-        className={`absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col gap-2 z-30 transition-opacity duration-300 pointer-events-auto ${
+        className={`absolute bottom-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex flex-col gap-2 z-30 transition-opacity duration-300 pointer-events-auto ${
           controlsVisible ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -414,14 +495,14 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
           />
         </div>
 
-        <div className="flex items-center justify-between gap-3 text-white text-xs pt-1 flex-wrap">
+        <div className="flex items-center justify-between gap-2 text-white text-xs pt-1 flex-wrap">
           {/* Controls: Play/Pause/Replay & Time */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={handleTogglePlay}
               className="p-1.5 rounded-xl bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
             >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+              {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
             </button>
 
             <button
@@ -429,10 +510,10 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
               className="p-1.5 rounded-xl bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
               title="重播"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
-            <span className="font-mono text-[11px] text-slate-300 font-bold ml-1">
+            <span className="font-mono text-[10px] sm:text-[11px] text-slate-300 font-bold ml-1">
               {currentTime.toFixed(1)}s / {duration.toFixed(1)}s
             </span>
           </div>
@@ -446,7 +527,7 @@ export const IntroAnimationModal: React.FC<IntroAnimationModalProps> = ({
                 onChange={(e) => handleToggleAutoPlay(e.target.checked)}
                 className="rounded border-slate-500 text-amber-500 focus:ring-amber-400"
               />
-              <span className="text-[11px] sm:text-xs">每次開啟網頁時播放</span>
+              <span className="text-[10px] sm:text-xs">每次開啟網頁時播放</span>
             </label>
           </div>
         </div>

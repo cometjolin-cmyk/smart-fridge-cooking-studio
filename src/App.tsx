@@ -64,32 +64,60 @@ export default function App() {
     return pref === null ? true : pref === "true";
   });
 
+  const [scanFeedback, setScanFeedback] = useState<{
+    message: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+
   // Active fridge photo source
   const activeImage = customImage || selectedPreset.imageUrl;
 
-  // Run AI Detection for Module 1
-  const handleRunDetection = async () => {
+  // Run AI Detection for Module 1 (with automatic upload support)
+  const handleRunDetection = async (overrideImage?: string) => {
     setIsScanning(true);
+    const targetImage = overrideImage || activeImage;
     try {
-      const { base64, mimeType } = await convertImageUrlToBase64(activeImage);
+      const { base64, mimeType } = await convertImageUrlToBase64(targetImage);
+      const isCustomPhoto = !!overrideImage || !!customImage;
       const res = await fetch("/api/detect-fridge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           imageBase64: base64,
           mimeType,
-          prompt: "請幫我盤點這張手繪冰箱插畫中的所有食材，標註位置與數量。",
+          prompt: isCustomPhoto
+            ? "請精準辨識這張真實生活中的冰箱內部或食材照片，列出所有食材名稱、位置(box_2d)與推估數量。"
+            : "請幫我盤點這張手繪冰箱插畫中的所有食材，標註位置與數量。",
         }),
       });
       const data = await res.json();
-      if (data.detected_items && Array.isArray(data.detected_items)) {
+      if (data.detected_items && Array.isArray(data.detected_items) && data.detected_items.length > 0) {
         setDetectedItems(data.detected_items);
+        setScanFeedback({
+          message: `✨ AI 成功辨識出 ${data.detected_items.length} 項食材！`,
+          type: "success",
+        });
+      } else {
+        setScanFeedback({
+          message: "盤點完成，可點擊「+ 手動新增」補充食材！",
+          type: "info",
+        });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Scan error:", e);
+      setScanFeedback({
+        message: "連線稍微延遲，已保留食材清單，可點擊 RE-SCAN 重新掃描。",
+        type: "error",
+      });
     } finally {
       setIsScanning(false);
+      setTimeout(() => setScanFeedback(null), 4500);
     }
+  };
+
+  const handleCustomImageUpload = async (dataUrl: string) => {
+    setCustomImage(dataUrl);
+    await handleRunDetection(dataUrl);
   };
 
   // Step 2 Generate Recipes
@@ -306,11 +334,10 @@ export default function App() {
                   setCustomImage(null);
                   setDetectedItems(preset.detectedItems);
                 }}
-                onCustomImageUpload={(dataUrl) => {
-                  setCustomImage(dataUrl);
-                }}
-                onRunDetection={handleRunDetection}
+                onCustomImageUpload={handleCustomImageUpload}
+                onRunDetection={() => handleRunDetection()}
                 isLoading={isScanning}
+                scanFeedback={scanFeedback}
                 onConfirmAndContinue={() => setCurrentStep(2)}
               />
             )}

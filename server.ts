@@ -147,7 +147,7 @@ app.post("/api/detect-fridge", async (req, res) => {
     };
 
     const textPart = { text: userPromptText };
-    const modelsToTry = ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
+    const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
     let responseText = "";
     let lastError: any = null;
 
@@ -162,8 +162,11 @@ app.post("/api/detect-fridge", async (req, res) => {
             responseSchema: FRIDGE_RESPONSE_SCHEMA,
           },
         });
-        responseText = response.text || "{}";
-        if (responseText) break;
+        const txt = (response.text || "").trim();
+        if (txt && txt !== "{}") {
+          responseText = txt;
+          break;
+        }
       } catch (err: any) {
         lastError = err;
         console.warn(`Model ${modelName} error in /api/detect-fridge:`, err.message || err);
@@ -189,7 +192,8 @@ app.post("/api/detect-fridge", async (req, res) => {
       });
     }
 
-    const parsedData = JSON.parse(responseText);
+    const cleanedText = responseText.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+    const parsedData = JSON.parse(cleanedText);
     const items = (parsedData.detected_items || []).map((item: any, idx: number) => ({
       ...item,
       isSelected: true,
@@ -808,11 +812,43 @@ app.get("/api/config-spec", (req, res) => {
   });
 });
 
+// Stream intro.mp4 with full HTTP 206 Range support for iOS/Safari/Chrome
+app.get("/intro.mp4", (req, res) => {
+  const publicVideo = path.resolve(__dirname, "public", "intro.mp4");
+  const distVideo = path.resolve(__dirname, "dist", "intro.mp4");
+  const videoPath = fs.existsSync(publicVideo)
+    ? publicVideo
+    : fs.existsSync(distVideo)
+    ? distVideo
+    : null;
+
+  if (!videoPath) {
+    return res.status(404).send("Intro video not found");
+  }
+
+  // Use Express built-in sendFile with RFC-compliant range, ETag and streaming handling
+  res.sendFile(videoPath, {
+    acceptRanges: true,
+    maxAge: 86400000,
+    headers: {
+      "Content-Type": "video/mp4",
+      "Accept-Ranges": "bytes",
+    },
+  });
+});
+
 // Intro Video Status & Upload
 app.get("/api/intro-video-status", (req, res) => {
   try {
-    const videoPath = path.resolve(__dirname, "public", "intro.mp4");
-    if (fs.existsSync(videoPath)) {
+    const publicVideo = path.resolve(__dirname, "public", "intro.mp4");
+    const distVideo = path.resolve(__dirname, "dist", "intro.mp4");
+    const videoPath = fs.existsSync(publicVideo)
+      ? publicVideo
+      : fs.existsSync(distVideo)
+      ? distVideo
+      : null;
+
+    if (videoPath) {
       const stats = fs.statSync(videoPath);
       res.json({ exists: true, size: stats.size, url: "/intro.mp4" });
     } else {
@@ -835,8 +871,15 @@ app.post("/api/upload-intro-video", (req, res) => {
     if (!fs.existsSync(publicDir)) {
       fs.mkdirSync(publicDir, { recursive: true });
     }
-    const targetFile = path.join(publicDir, "intro.mp4");
-    fs.writeFileSync(targetFile, buffer);
+    const publicTarget = path.join(publicDir, "intro.mp4");
+    fs.writeFileSync(publicTarget, buffer);
+
+    // Also write to dist/intro.mp4 if dist exists
+    const distDir = path.resolve(__dirname, "dist");
+    if (fs.existsSync(distDir)) {
+      fs.writeFileSync(path.join(distDir, "intro.mp4"), buffer);
+    }
+
     console.log(`Saved intro.mp4 successfully (${buffer.length} bytes)`);
     res.json({ success: true, url: "/intro.mp4", size: buffer.length });
   } catch (err: any) {

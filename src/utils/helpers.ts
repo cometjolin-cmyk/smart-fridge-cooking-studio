@@ -42,30 +42,126 @@ export function getConfidenceBadge(confidence: number): { text: string; bg: stri
   return { text: `${percent}% 待確認`, bg: "bg-rose-500/15 border-rose-500/30", textCol: "text-rose-400" };
 }
 
-// Convert SVG data URL or image to JPEG base64 for API call
+// Convert and optimize any image URL (Base64 data URL, SVG, or Remote/Blob URL) for AI Vision API
 export async function convertImageUrlToBase64(url: string): Promise<{ base64: string; mimeType: string }> {
-  return new Promise((resolve, reject) => {
+  if (!url) {
+    return { base64: "", mimeType: "image/jpeg" };
+  }
+
+  // 1. If it's an SVG data URI (like the default hand-drawn preset), rasterize cleanly
+  if (url.startsWith("data:image/svg+xml")) {
+    try {
+      return await rasterizeSvgToJpeg(url);
+    } catch (err) {
+      console.warn("SVG rasterization warning, falling back:", err);
+    }
+  }
+
+  // 2. For photographic / data / blob URLs, optimize and downscale to max 1440px to ensure fast transfer and prevent payload overflow
+  try {
+    return await optimizeImageForAi(url);
+  } catch (err) {
+    console.warn("Image optimization fallback:", err);
+    // Direct extraction fallback
+    if (url.startsWith("data:") && url.includes(";base64,")) {
+      const [header, base64] = url.split(";base64,");
+      const mimeMatch = header.match(/data:([^;]+)/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      return { base64, mimeType };
+    }
+    return { base64: "", mimeType: "image/jpeg" };
+  }
+}
+
+// Downscale large smartphone camera photos (often 12-48MP / 20MB) to ~1440px JPEG (~300KB)
+export function optimizeImageForAi(urlOrDataUri: string): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth || 800;
-      canvas.height = img.naturalHeight || 600;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("無法建立 Canvas 上下文"));
-        return;
+      try {
+        const MAX_DIM = 1440;
+        let width = img.naturalWidth || img.width || 800;
+        let height = img.naturalHeight || img.height || 600;
+
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("No 2d context");
+
+        ctx.fillStyle = "#faf5ec";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        const base64 = dataUrl.replace(/^data:image\/jpeg;base64,/, "");
+        resolve({ base64, mimeType: "image/jpeg" });
+      } catch (e) {
+        if (urlOrDataUri.startsWith("data:") && urlOrDataUri.includes(";base64,")) {
+          const [header, base64] = urlOrDataUri.split(";base64,");
+          const mimeMatch = header.match(/data:([^;]+)/);
+          resolve({ base64, mimeType: mimeMatch ? mimeMatch[1] : "image/jpeg" });
+        } else {
+          resolve({ base64: "", mimeType: "image/jpeg" });
+        }
       }
-      // Fill dark kitchen background
-      ctx.fillStyle = "#0f172a";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-      const base64 = dataUrl.replace(/^data:image\/jpeg;base64,/, "");
-      resolve({ base64, mimeType: "image/jpeg" });
     };
-    img.onerror = (e) => reject(new Error("載入圖片失敗: " + e));
+    img.onerror = () => {
+      if (urlOrDataUri.startsWith("data:") && urlOrDataUri.includes(";base64,")) {
+        const [header, base64] = urlOrDataUri.split(";base64,");
+        const mimeMatch = header.match(/data:([^;]+)/);
+        resolve({ base64, mimeType: mimeMatch ? mimeMatch[1] : "image/jpeg" });
+      } else {
+        resolve({ base64: "", mimeType: "image/jpeg" });
+      }
+    };
+    img.src = urlOrDataUri;
+  });
+}
+
+function rasterizeSvgToJpeg(url: string): Promise<{ base64: string; mimeType: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1000;
+        canvas.height = 1250;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("No canvas context");
+
+        ctx.fillStyle = "#faf5ec";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+        const base64 = dataUrl.replace(/^data:image\/jpeg;base64,/, "");
+        resolve({ base64, mimeType: "image/jpeg" });
+      } catch (e) {
+        // Return a clean fallback base64
+        resolve({
+          base64: "",
+          mimeType: "image/jpeg",
+        });
+      }
+    };
+    img.onerror = () => {
+      resolve({
+        base64: "",
+        mimeType: "image/jpeg",
+      });
+    };
     img.src = url;
   });
 }

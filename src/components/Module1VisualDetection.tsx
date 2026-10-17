@@ -24,6 +24,7 @@ interface Module1VisualDetectionProps {
   onRunDetection: () => void;
   isLoading: boolean;
   onConfirmAndContinue: () => void;
+  scanFeedback?: { message: string; type: "success" | "error" | "info" } | null;
 }
 
 export const Module1VisualDetection: React.FC<Module1VisualDetectionProps> = ({
@@ -35,6 +36,7 @@ export const Module1VisualDetection: React.FC<Module1VisualDetectionProps> = ({
   onRunDetection,
   isLoading,
   onConfirmAndContinue,
+  scanFeedback,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -114,43 +116,74 @@ export const Module1VisualDetection: React.FC<Module1VisualDetectionProps> = ({
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="max-w-2xl mx-auto space-y-4">
+      {/* Scan Feedback Banner Toast */}
+      {scanFeedback && (
+        <div
+          className={`px-4 py-2.5 rounded-2xl border-2 text-xs font-bold flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top duration-200 ${
+            scanFeedback.type === "success"
+              ? "bg-emerald-50 border-emerald-600 text-emerald-950"
+              : scanFeedback.type === "error"
+              ? "bg-rose-50 border-rose-600 text-rose-950"
+              : "bg-amber-50 border-amber-600 text-amber-950"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span>{scanFeedback.type === "success" ? "✨" : scanFeedback.type === "error" ? "⚠️" : "💡"}</span>
+            <span>{scanFeedback.message}</span>
+          </div>
+          {scanFeedback.type === "error" && (
+            <button
+              onClick={onRunDetection}
+              className="px-2 py-0.5 rounded-lg bg-rose-600 text-white text-[11px] font-black hover:bg-rose-700 whitespace-nowrap ml-2"
+            >
+              重試
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 1. Illustrated Refrigerator Canvas Container */}
       <div className="sketch-border-thick rounded-3xl overflow-hidden bg-white relative shadow-xl">
         {/* Top Header bar over fridge */}
-        <div className="p-3 bg-[#fdfbf7] border-b-2 border-slate-850 flex flex-wrap items-center justify-between gap-2">
+        <div className="p-2.5 sm:p-3 bg-[#fdfbf7] border-b-2 border-slate-850 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse border border-slate-900"></span>
             <span className="text-xs font-black text-slate-850 tracking-wide font-sans">
               智慧冰箱多模態掃描
             </span>
             <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-md bg-amber-100 border border-slate-800 text-slate-800 font-bold">
-              手繪風 ‧ 視覺框選
+              視覺辨識
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => cameraInputRef.current?.click()}
-              className="sketch-btn px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white hover:bg-amber-50 text-slate-800 flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+              className="sketch-btn px-2 sm:px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white hover:bg-amber-50 text-slate-800 flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+              title="使用相機拍照辨識冰箱"
             >
-              <Camera className="w-3.5 h-3.5 text-cyan-700" />
-              <span>相機拍照</span>
+              <Camera className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
+              <span className="hidden xs:inline">相機拍照</span>
+              <span className="xs:hidden">拍照</span>
             </button>
 
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="sketch-btn px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white hover:bg-amber-50 text-slate-800 flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+              className="sketch-btn px-2 sm:px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white hover:bg-amber-50 text-slate-800 flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
+              title="從相簿選取照片辨識冰箱"
             >
-              <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
-              <span>相簿選取</span>
+              <ImageIcon className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="hidden xs:inline">相簿選取</span>
+              <span className="xs:hidden">相簿</span>
             </button>
 
             {/* Top Right Re-Scan Button */}
             <button
               onClick={onRunDetection}
               disabled={isLoading}
-              className="sketch-btn px-3 py-1 rounded-full watercolor-teal text-slate-900 font-extrabold text-[11px] tracking-wide flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-60 whitespace-nowrap shrink-0"
+              className="sketch-btn px-2.5 sm:px-3 py-1 rounded-full watercolor-teal text-slate-900 font-extrabold text-[11px] tracking-wide flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-60 whitespace-nowrap shrink-0"
+              title="重新使用 AI 分析畫面食材"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
               <span>{isLoading ? "掃描中..." : "RE-SCAN"}</span>
@@ -496,12 +529,12 @@ export const Module1VisualDetection: React.FC<Module1VisualDetectionProps> = ({
         <div className="pt-3">
           <button
             onClick={onConfirmAndContinue}
-            className="w-full py-3.5 px-4 sm:px-6 rounded-2xl watercolor-pink sketch-btn text-slate-900 font-black text-center shadow-md active:scale-98 transition flex flex-col items-center justify-center cursor-pointer"
+            className="w-full py-3 sm:py-3.5 px-3 sm:px-6 rounded-2xl watercolor-pink sketch-btn text-slate-900 font-black text-center shadow-md active:scale-98 transition flex flex-col items-center justify-center cursor-pointer"
           >
             <span className="text-xs sm:text-base tracking-wider font-extrabold text-slate-900 whitespace-nowrap">
               CONFIRM & CONTINUE
             </span>
-            <span className="text-[10px] sm:text-xs font-semibold text-slate-700 -mt-0.5 whitespace-nowrap">
+            <span className="text-[10px] sm:text-xs font-semibold text-slate-700 -mt-0.5 text-center px-1">
               (確認並繼續 ➔ 設定設備與飲食條件)
             </span>
           </button>
