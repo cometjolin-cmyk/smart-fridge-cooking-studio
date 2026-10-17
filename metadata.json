@@ -1,0 +1,6 @@
+{
+  "name": "智慧冰箱視覺辨識與食材盤點助理",
+  "description": "運用多模態視覺 AI 分析冰箱內部照片，自動辨識食材、估算數量與層架位置（上層、中層、抽屜、側門），提供即時盤點與智慧廚房管理。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* 水彩紙底色與手寫字體支援 */
+body {
+  background-color: #f7f5f0;
+  background-image: radial-gradient(#e5e0d8 1px, transparent 1px);
+  background-size: 20px 20px;
+  color: #2d3748;
+  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+/* 手繪柔和卡片風格 */
+.watercolor-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(45, 55, 72, 0.15);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), 2px 2px 0px rgba(0,0,0,0.03);
+}
+
+/* 手繪彩色藥丸按鈕 */
+.watercolor-btn-primary {
+  background: linear-gradient(135deg, #a7f3d0 0%, #bae6fd 100%);
+  border: 1.5px solid #4b5563;
+  box-shadow: 2px 2px 0px #4b5563;
+  transition: all 0.15s ease-in-out;
+}
+.watercolor-btn-primary:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0px 0px 0px #4b5563;
+}
+
+@layer utilities {
+  .sketch-border {
+    border: 2px solid #1e293b;
+    box-shadow: 3px 3px 0px #1e293b;
+  }
+  .sketch-border-thick {
+    border: 2.5px solid #1e293b;
+    box-shadow: 4px 4px 0px #1e293b;
+  }
+  .sketch-border-sm {
+    border: 1.5px solid #1e293b;
+    box-shadow: 2px 2px 0px #1e293b;
+  }
+  .sketch-btn {
+    border: 2px solid #1e293b;
+    box-shadow: 3px 3px 0px #1e293b;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+  .sketch-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0px #1e293b;
+  }
+  .sketch-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0px #1e293b;
+  }
+  .paper-bg {
+    background-color: #faf6ee;
+    background-image: 
+      radial-gradient(#e2d9c8 0.75px, transparent 0.75px),
+      radial-gradient(#e2d9c8 0.75px, #faf6ee 0.75px);
+    background-size: 30px 30px;
+    background-position: 0 0, 15px 15px;
+  }
+  .watercolor-grad {
+    background: linear-gradient(135deg, #fbcfe8 0%, #fed7aa 35%, #a7f3d0 70%, #bae6fd 100%);
+  }
+  .watercolor-pink {
+    background: linear-gradient(135deg, #fecdd3 0%, #fed7aa 100%);
+  }
+  .watercolor-teal {
+    background: linear-gradient(135deg, #99f6e4 0%, #bae6fd 100%);
+  }
+  /* Organic hand-drawn / crayon doodle contour */
+  .crayon-contour {
+    border-radius: 255px 18px 225px 22px / 20px 225px 25px 255px;
+  }
+  .crayon-contour-alt {
+    border-radius: 20px 240px 22px 235px / 245px 25px 255px 20px;
+  }
+}
+
+@keyframes scan {
+  0% {
+    top: 5%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 90%;
+    opacity: 1;
+  }
+  100% {
+    top: 5%;
+    opacity: 0.8;
+  }
+}
+
+.animate-scan {
+  animation: scan 2.2s ease-in-out infinite;
+}
+
+@keyframes crayon-wiggle {
+  0%, 100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-1.5deg) scale(1.02);
+  }
+  75% {
+    transform: rotate(1.5deg) scale(1.02);
+  }
+}
+
+.animate-crayon-wiggle {
+  animation: crayon-wiggle 1.8s ease-in-out infinite;
+}

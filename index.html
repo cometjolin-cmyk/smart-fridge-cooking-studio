@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>智慧冰箱視覺辨識與食材盤點助理</title>
+    <meta name="description" content="運用多模態視覺 AI 分析冰箱內部照片，自動辨識食材、估算數量與層架位置（上層、中層、抽屜、側門），提供即時盤點與智慧廚房管理。" />
+    <meta property="og:title" content="智慧冰箱視覺辨識與食材盤點助理" />
+    <meta property="og:description" content="運用多模態視覺 AI 分析冰箱內部照片，自動辨識食材、估算數量與層架位置（上層、中層、抽屜、側門），提供即時盤點與智慧廚房管理。" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <script>
+      // Ignore WebSocket and HMR disconnection errors per AI Studio environment constraints
+      window.addEventListener('unhandledrejection', function(event) {
+        var msg = event && event.reason && (event.reason.message || String(event.reason));
+        if (msg && (msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1 || msg.indexOf('ws') !== -1)) {
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('error', function(event) {
+        var msg = event && (event.message || String(event));
+        if (msg && (msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1)) {
+          event.preventDefault();
+        }
+      });
+    </script>
+  </head>
+  <body class="paper-bg text-slate-800 antialiased font-sans min-h-screen selection:bg-amber-300 selection:text-slate-900">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
